@@ -1,15 +1,23 @@
 import pandas as pd
 import numpy as np
-from typing import Iterable
+from typing import Iterable, List
 from pathlib import Path
-from os import walk
-import sqlite3
+from os import walk, fspath
+import sys
+import json
+from sklearn.cluster import KMeans
 
-def get_datasets():
-    return
+def get_dataset(dataset_directory: Path)->str:
+    return dataset_directory.stem
 
-def get_metadata():
-    return
+def get_tissue_type(dataset_directory: Path) -> str:
+    data_set_dir = fspath(dataset_directory)
+
+    spreadsheet_df = pd.read_csv(data_set_spreadsheet)
+
+    for i in range(len(spreadsheet_df.index)):
+        if data_set_dir in spreadsheet_df['localPath'][i]:
+            return spreadsheet_df['Organ/Tissue'][i]
 
 def get_csv_files(partial_file_name: str, directory: Path)-> Iterable[Path]:
     for dirpath_str, dirnames, filenames in walk(directory):
@@ -25,17 +33,43 @@ def get_tile_id(file: Path)-> str:
 def get_attribute(file: Path)->str:
     return file.stem.split("_")[0]
 
-def main(output_directory: Path):
+def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str])->pd.DataFrame:
 
-    database_file = Path('codex.db')
-    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv', '**cell_channel_total.csv']
+    if data_file == '**cell_shape.csv':
 
-    conn = sqlite3.connect(database_file)
-    cur = conn.cursor()
+        column_name = 'cell_shape'
 
-    stitched_dfs = {}
+        df[column_name] = ""
+        for i, row in df.iterrows():
+            cell_shape_list = [row[column] for column in on_columns]
+            df.at[i, column_name] = cell_shape_list
 
-for data_file in per_cell_data_files:
+    else:
+
+        column_name = 'protein_' + data_file.split('_')[-1][:-4]
+        dapi_columns = [column for column in df.columns if 'DAPI' in column]
+
+        df[column_name] = ""
+        for i, row in df.iterrows():
+            protein_dict = {column:row[column] for column in on_columns}
+            df.at[i, column_name] = json.dumps(protein_dict)
+
+        df.drop(dapi_columns, axis=1, inplace=True)
+
+    df.drop(on_columns, axis=1, inplace=True)
+
+    return df.copy()
+
+def cluster_and_coalesce(df: pd.DataFrame, on_columns:List[str], data_file[str])->pd.DataFrame:
+
+    cluster_column_header = 'cluster_by_' + data_file.split('_')[-1][:-4]
+
+    data = df[on_columns].to_numpy()
+    cluster_assignments = KMeans(n_clusters = 6, random_state = 0).fit(data)
+    df[cluster_column_header] = pd.Series(cluster_assignments.labels_)
+    return coalesce_columns(df, data_file, on_columns)
+
+def stitch_dfs(data_file: str, dataset_directory: Path)->DataFrame:
 
     csv_files = list(get_csv_files(data_file, directory))
 
@@ -44,33 +78,55 @@ for data_file in per_cell_data_files:
 
     for i, tile_df in enumerate(tile_dfs):
         tile_df['ID'] = tile_df['ID'].astype(str)
-        tile_df['tile'] = tile_ids[i] + "_"
-        tile_df['cell_id'] = tile_df['tile'] + tile_df['ID']
-        tile_df.drop('ID', axis=1)
-        tile_df.drop('tile', axis=1)
+        tile_df['tile'] = tile_ids[i]
+        tile_df['cell_id'] = modality + "-" + dataset + "-" + tile_df['tile'] + "-"+ tile_df['ID']
+        if data_file == '**cell_cluster.csv':
+            for column in tile_df.columns:
+                if column != 'ID' and column != 'tile' and column != 'cell_id':
+                    tile_df[column] = modality + "-" + dataset + "-" + tile_df['tile'] + "-"+ tile_df[column].astype(str)
+                    print(tile_df[column].unique())
+        tile_df.drop(['ID', 'tile'], axis=1, inplace=True)
+
 
     for tile_df in tile_dfs[1:]:
         tile_dfs[0] = tile_dfs[0].merge(tile_df, how='outer')
-        old_columns = tile_df.columns
-        new_columns = [column + get_attribute(csv_files[0]) for column in old_columns]
-        new_columns[0] = 'cell_id'
 
-        tile_dfs[0].columns = new_columns
+    if data_file != '**cell_shape.csv':
+        protein_columns = [column for column in tile_dfs[0].columns if column != 'cell_id' and 'DAPI' not in column]
+        tile_dfs[0] = cluster_and_coalesce(tile_dfs[0], protein_columns, data_file)
 
-        stitched_dfs[data_file] = tile_dfs[0]
+    return tile_dfs[0]
 
-    stitched_dfs_list = list(stitched_dfs.values())
+def main(output_directory: Path):
 
-    dataset_df = stitched_dfs_list[0]
+    modality = 'codex'
+    dataset_dfs = []
+    database_file = Path('codex.db')
 
-    for stitched_df in stitched_dfs_list[1:]:
-        dataset_df = dataset_df.merge(stitched_df, how='outer')
+    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv', '**cell_channel_total.csv']
 
-    dataset_df = dataset_df.set_index('cell_id')
+    for dataset_directory in output_directory.iterdir():
 
-    dataset_df.to_sql('codex', conn, if_exists='replace', index=True)
+        dataset = get_dataset(dataset_directory)
 
-    conn.close()
+        stitched_dfs = [stitch_dfs(data_file, dataset_directory) for data_file in per_cell_data_files]
+
+        dataset_df = stitched_dfs[0]
+
+        for stitched_df in stitched_dfs[1:]:
+            dataset_df = dataset_df.merge(stitched_df, how='outer')
+
+        dataset_df['dataset'] = dataset
+#        dataset_df['tissue_type'] = tissue_type
+        dataset_df['modality'] = modality
+
+        dataset_dfs.append(dataset_df)
+
+    modality_df = pd.concat(dataset_dfs)
+    on_columns = [column for column in modality_df.columns if column.isdigit()]
+    modality_df = cluster_and_coalesce(modality_df, on_columns, '**cell_shape.csv')
+
+    modality_df.to_csv('codex.csv')
 
 
 if __name__ == '__main__':
