@@ -8,15 +8,22 @@ hints:
 baseCommand: /opt/parse_sprm_output.py
 
 inputs:
-  data_dir:
-    type: Directory
-    doc: Base directory to be recursively searched for h5ad files to be annotated and concatenated
+
+  nexus_token:
+    type: string
+    doc: Valid nexus token for search-api
     inputBinding:
       position: 1
 
+  data_directories:
+    type: string[]
+    doc: List of paths to processed dataset directories
+    inputBinding:
+      position: 2
+
 outputs:
-  db_file:
-    type: File
+  csv_files:
+    type: File[]
+    doc: csv files containing annotated and concatenated cell and protein data
     outputBinding:
-      glob: "codex.db"
-    doc: Annotated, concatenated dataset in PostgreSQL relational database
+      glob: *.csv

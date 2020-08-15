@@ -6,18 +6,61 @@ from os import walk, fspath
 import sys
 import json
 from sklearn.cluster import KMeans
+import yaml
 
 def get_dataset(dataset_directory: Path)->str:
     return dataset_directory.stem
 
-def get_tissue_type(dataset_directory: Path) -> str:
-    data_set_dir = fspath(dataset_directory)
+def get_tissue_type(dataset:str, token:str)->str:
 
-    spreadsheet_df = pd.read_csv(data_set_spreadsheet)
+    organ_dict = yaml.load(open('organ_types.yaml'), Loader=yaml.BaseLoader)
 
-    for i in range(len(spreadsheet_df.index)):
-        if data_set_dir in spreadsheet_df['localPath'][i]:
-            return spreadsheet_df['Organ/Tissue'][i]
+    dataset_query_dict = {
+       "query": {
+         "bool": {
+           "must": [],
+           "filter": [
+             {
+               "match_all": {}
+             },
+             {
+               "exists": {
+                 "field": "files.rel_path"
+               }
+             },
+             {
+               "match_phrase": {
+                 "uuid": {
+                   "query": dataset
+                 },
+               }
+
+             }
+           ],
+           "should": [],
+           "must_not": [
+             {
+               "match_phrase": {
+                 "status": {
+                   "query": "Error"
+                 }
+               }
+             }
+           ]
+         }
+       }
+     }
+
+    dataset_response = requests.post(
+    'https://search-api.dev.hubmapconsortium.org/search',
+    json = dataset_query_dict,
+    headers = {'Authorization': 'Bearer ' + token})
+    hits = dataset_response.json()['hits']['hits']
+
+    for hit in hits:
+        for ancestor in hit['_source']['ancestors']:
+            if 'organ' in ancestor.keys():
+                return organ_dict[ancestor['organ']]['description']
 
 def get_csv_files(partial_file_name: str, directory: Path)-> Iterable[Path]:
     for dirpath_str, dirnames, filenames in walk(directory):
@@ -97,7 +140,7 @@ def stitch_dfs(data_file: str, dataset_directory: Path)->DataFrame:
 
     return tile_dfs[0]
 
-def main(output_directory: Path):
+def main(nexus_token:str, output_directories:List[Path]):
 
     modality = 'codex'
     dataset_dfs = []
@@ -105,9 +148,10 @@ def main(output_directory: Path):
 
     per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv', '**cell_channel_total.csv']
 
-    for dataset_directory in output_directory.iterdir():
+    for dataset_directory in output_directories:
 
         dataset = get_dataset(dataset_directory)
+        tissue_type = get_tissue_type(dataset, nexus_token)
 
         stitched_dfs = [stitch_dfs(data_file, dataset_directory) for data_file in per_cell_data_files]
 
@@ -117,7 +161,7 @@ def main(output_directory: Path):
             dataset_df = dataset_df.merge(stitched_df, how='outer')
 
         dataset_df['dataset'] = dataset
-#        dataset_df['tissue_type'] = tissue_type
+        dataset_df['tissue_type'] = tissue_type
         dataset_df['modality'] = modality
 
         dataset_dfs.append(dataset_df)
@@ -131,7 +175,8 @@ def main(output_directory: Path):
 
 if __name__ == '__main__':
     p = ArgumentParser()
-    p.add_argument('output_directory', type=Path)
+    p.add_argument('nexus_token', type=str)
+    p.add_argument('output_directory', type=Path, nargs='+')
     args = p.parse_args()
 
     main(args.output_directory)
