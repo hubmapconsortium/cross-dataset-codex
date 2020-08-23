@@ -176,7 +176,7 @@ def main(nexus_token:str, output_directories:List[Path]):
 if __name__ == '__main__':
     p = ArgumentParser()
     p.add_argument('nexus_token', type=str)
-    p.add_argument('output_directory', type=Path, nargs='+')
+    p.add_argument('data_directories', type=Path, nargs='+')
     args = p.parse_args()
 
-    main(args.output_directory)
+    main(args.nexus_token, args.data_directories)
