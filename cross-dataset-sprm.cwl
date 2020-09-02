@@ -11,16 +11,16 @@ inputs:
 
   nexus_token:
     label: "Valid nexus token for search-api"
-    type: String
+    type: string
 
 outputs:
   csv_files:
-    outputSource: join-annotate/csv_files
+    outputSource: annotate-concatenate/csv_files
     type: File[]
 
 steps:
 
-  - id: join-annotate
+  - id: annotate-concatenate
     in:
       - id: data_directories
         source: data_directories
@@ -30,5 +30,5 @@ steps:
     out:
       - csv_files
 
-    run: steps/join-annotate.cwl
+    run: steps/annotate-concatenate.cwl
     label: "Annotates and concatenates csv files, writes out csvs"

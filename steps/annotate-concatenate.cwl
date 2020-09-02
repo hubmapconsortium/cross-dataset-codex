@@ -26,4 +26,4 @@ outputs:
     type: File[]
     doc: csv files containing annotated and concatenated cell and protein data
     outputBinding:
-      glob: *.csv
+      glob: "*.csv"
