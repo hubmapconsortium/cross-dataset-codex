@@ -1,60 +1,64 @@
-import pandas as pd
-import numpy as np
+#!/usr/bin/env python3
+
 from typing import Iterable, List
 from pathlib import Path
-from os import walk, fspath
-import sys
-import json
+from os import walk
 from sklearn.cluster import KMeans
+from argparse import ArgumentParser
+from functools import reduce
+import pandas as pd
+import requests
 import yaml
+import json
 
-def get_dataset(dataset_directory: Path)->str:
+
+def get_dataset(dataset_directory: Path) -> str:
     return dataset_directory.stem
 
-def get_tissue_type(dataset:str, token:str)->str:
 
-    organ_dict = yaml.load(open('organ_types.yaml'), Loader=yaml.BaseLoader)
+def get_tissue_type(dataset: str, token: str) -> str:
+    organ_dict = yaml.load(open('/opt/organ_types.yaml'), Loader=yaml.BaseLoader)
 
     dataset_query_dict = {
-       "query": {
-         "bool": {
-           "must": [],
-           "filter": [
-             {
-               "match_all": {}
-             },
-             {
-               "exists": {
-                 "field": "files.rel_path"
-               }
-             },
-             {
-               "match_phrase": {
-                 "uuid": {
-                   "query": dataset
-                 },
-               }
+        "query": {
+            "bool": {
+                "must": [],
+                "filter": [
+                    {
+                        "match_all": {}
+                    },
+                    {
+                        "exists": {
+                            "field": "files.rel_path"
+                        }
+                    },
+                    {
+                        "match_phrase": {
+                            "uuid": {
+                                "query": dataset
+                            },
+                        }
 
-             }
-           ],
-           "should": [],
-           "must_not": [
-             {
-               "match_phrase": {
-                 "status": {
-                   "query": "Error"
-                 }
-               }
-             }
-           ]
-         }
-       }
-     }
+                    }
+                ],
+                "should": [],
+                "must_not": [
+                    {
+                        "match_phrase": {
+                            "status": {
+                                "query": "Error"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
 
     dataset_response = requests.post(
-    'https://search-api.dev.hubmapconsortium.org/search',
-    json = dataset_query_dict,
-    headers = {'Authorization': 'Bearer ' + token})
+        'https://search-api.dev.hubmapconsortium.org/search',
+        json=dataset_query_dict,
+        headers={'Authorization': 'Bearer ' + token})
     hits = dataset_response.json()['hits']['hits']
 
     for hit in hits:
@@ -62,7 +66,8 @@ def get_tissue_type(dataset:str, token:str)->str:
             if 'organ' in ancestor.keys():
                 return organ_dict[ancestor['organ']]['description']
 
-def get_csv_files(partial_file_name: str, directory: Path)-> Iterable[Path]:
+
+def get_csv_files(partial_file_name: str, directory: Path) -> Iterable[Path]:
     for dirpath_str, dirnames, filenames in walk(directory):
         dirpath = Path(dirpath_str)
         for filename in filenames:
@@ -70,14 +75,16 @@ def get_csv_files(partial_file_name: str, directory: Path)-> Iterable[Path]:
             if filepath.match(partial_file_name):
                 yield filepath
 
-def get_tile_id(file: Path)-> str:
+
+def get_tile_id(file: Path) -> str:
     return file.stem[0:15]
 
-def get_attribute(file: Path)->str:
+
+def get_attribute(file: Path) -> str:
     return file.stem.split("_")[0]
 
-def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str])->pd.DataFrame:
 
+def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str]) -> pd.DataFrame:
     if data_file == '**cell_shape.csv':
 
         column_name = 'cell_shape'
@@ -94,7 +101,7 @@ def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str])->p
 
         df[column_name] = ""
         for i, row in df.iterrows():
-            protein_dict = {column:row[column] for column in on_columns}
+            protein_dict = {column: row[column] for column in on_columns}
             df.at[i, column_name] = json.dumps(protein_dict)
 
         df.drop(dapi_columns, axis=1, inplace=True)
@@ -103,18 +110,22 @@ def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str])->p
 
     return df.copy()
 
-def cluster_and_coalesce(df: pd.DataFrame, on_columns:List[str], data_file[str])->pd.DataFrame:
 
+def cluster_and_coalesce(df: pd.DataFrame, on_columns: List[str], data_file: str) -> pd.DataFrame:
     cluster_column_header = 'cluster_by_' + data_file.split('_')[-1][:-4]
 
     data = df[on_columns].to_numpy()
-    cluster_assignments = KMeans(n_clusters = 6, random_state = 0).fit(data)
+    cluster_assignments = KMeans(n_clusters=6, random_state=0).fit(data)
     df[cluster_column_header] = pd.Series(cluster_assignments.labels_)
     return coalesce_columns(df, data_file, on_columns)
 
-def stitch_dfs(data_file: str, dataset_directory: Path)->DataFrame:
 
-    csv_files = list(get_csv_files(data_file, directory))
+def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+    modality = 'codex'
+    dataset = get_dataset(dataset_directory)
+    tissue_type = get_tissue_type(dataset, nexus_token)
+
+    csv_files = list(get_csv_files(data_file, dataset_directory))
 
     tile_dfs = [pd.read_csv(csv_file) for csv_file in csv_files]
     tile_ids = [get_tile_id(csv_file) for csv_file in csv_files]
@@ -122,50 +133,45 @@ def stitch_dfs(data_file: str, dataset_directory: Path)->DataFrame:
     for i, tile_df in enumerate(tile_dfs):
         tile_df['ID'] = tile_df['ID'].astype(str)
         tile_df['tile'] = tile_ids[i]
-        tile_df['cell_id'] = modality + "-" + dataset + "-" + tile_df['tile'] + "-"+ tile_df['ID']
+        tile_df['cell_id'] = modality + "-" + dataset + "-" + tile_df['tile'] + "-" + tile_df['ID']
         if data_file == '**cell_cluster.csv':
             for column in tile_df.columns:
                 if column != 'ID' and column != 'tile' and column != 'cell_id':
-                    tile_df[column] = modality + "-" + dataset + "-" + tile_df['tile'] + "-"+ tile_df[column].astype(str)
+                    tile_df[column] = modality + "-" + dataset + "-" + tile_df['tile'] + "-" + tile_df[column].astype(
+                        str)
                     print(tile_df[column].unique())
         tile_df.drop(['ID', 'tile'], axis=1, inplace=True)
 
-
-    for tile_df in tile_dfs[1:]:
-        tile_dfs[0] = tile_dfs[0].merge(tile_df, how='outer')
+    stitched_df = reduce(outer_join, tile_dfs)
 
     if data_file != '**cell_shape.csv':
-        protein_columns = [column for column in tile_dfs[0].columns if column != 'cell_id' and 'DAPI' not in column]
-        tile_dfs[0] = cluster_and_coalesce(tile_dfs[0], protein_columns, data_file)
+        protein_columns = [column for column in stitched_df.columns if column != 'cell_id' and 'DAPI' not in column]
+        stitched_df = cluster_and_coalesce(tile_dfs[0], protein_columns, data_file)
 
-    return tile_dfs[0]
+    stitched_df['dataset'] = dataset
+    stitched_df['tissue_type'] = tissue_type
+    stitched_df['modality'] = modality
 
-def main(nexus_token:str, output_directories:List[Path]):
+    return stitched_df
 
-    modality = 'codex'
-    dataset_dfs = []
-    database_file = Path('codex.db')
 
-    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv', '**cell_channel_total.csv']
+def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrmae) -> pd.DataFrame:
+    return pd.merge(df_1, df_2, how='outer')
 
-    for dataset_directory in output_directories:
 
-        dataset = get_dataset(dataset_directory)
-        tissue_type = get_tissue_type(dataset, nexus_token)
+def get_dataset_df(dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv',
+                           '**cell_channel_total.csv']
 
-        stitched_dfs = [stitch_dfs(data_file, dataset_directory) for data_file in per_cell_data_files]
+    stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
 
-        dataset_df = stitched_dfs[0]
+    dataset_df = reduce(outer_join, stitched_dfs)
 
-        for stitched_df in stitched_dfs[1:]:
-            dataset_df = dataset_df.merge(stitched_df, how='outer')
+    return dataset_df
 
-        dataset_df['dataset'] = dataset
-        dataset_df['tissue_type'] = tissue_type
-        dataset_df['modality'] = modality
 
-        dataset_dfs.append(dataset_df)
-
+def main(nexus_token: str, output_directories: List[Path]):
+    dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
     on_columns = [column for column in modality_df.columns if column.isdigit()]
     modality_df = cluster_and_coalesce(modality_df, on_columns, '**cell_shape.csv')

@@ -16,7 +16,7 @@ inputs:
       position: 1
 
   data_directories:
-    type: string[]
+    type: Directory[]
     doc: List of paths to processed dataset directories
     inputBinding:
       position: 2
