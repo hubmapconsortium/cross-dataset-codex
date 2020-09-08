@@ -56,7 +56,7 @@ def get_tissue_type(dataset: str, token: str) -> str:
     }
 
     dataset_response = requests.post(
-        'https://search-api.dev.hubmapconsortium.org/search',
+        'https://search-api.hubmapconsortium.org/search',
         json=dataset_query_dict,
         headers={'Authorization': 'Bearer ' + token})
     hits = dataset_response.json()['hits']['hits']
