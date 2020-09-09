@@ -56,7 +56,7 @@ def get_tissue_type(dataset: str, token: str) -> str:
     }
 
     dataset_response = requests.post(
-        'https://search-api.hubmapconsortium.org/search',
+        'https://search.api.hubmapconsortium.org/search',
         json=dataset_query_dict,
         headers={'Authorization': 'Bearer ' + token})
     hits = dataset_response.json()['hits']['hits']
@@ -89,7 +89,7 @@ def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str]) ->
 
         column_name = 'cell_shape'
 
-        df[column_name] = ""
+        df[column_name] = []
         for i, row in df.iterrows():
             cell_shape_list = [row[column] for column in on_columns]
             df.at[i, column_name] = cell_shape_list
@@ -155,12 +155,14 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.
     return stitched_df
 
 
-def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrmae) -> pd.DataFrame:
+def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrame) -> pd.DataFrame:
     return pd.merge(df_1, df_2, how='outer')
 
 
 def get_dataset_df(dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
-    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv',
+    #    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv',
+    #                           '**cell_channel_total.csv']
+    per_cell_data_files = ['**cell_channel_covar.csv', '**cell_channel_mean.csv',
                            '**cell_channel_total.csv']
 
     stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
@@ -170,13 +172,29 @@ def get_dataset_df(dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
     return dataset_df
 
 
+def get_group_df(modality_df: pd.DataFrame) -> pd.DataFrame:
+    group_columns = [column for column in modality_df.columns if 'cluster' in column or 'tissue' in column]
+    group_dict_list = []
+
+    for group_type in group_columns:
+        for group_id in modality_df[group_type].unique():
+            grouping_df = modality_df[modality_df[group_type] == group_id].copy()
+            cell_ids = list(grouping_df['cell_id'].unique())
+            group_dict_list.append({'group_type': group_type, 'group_id': group_id, 'cells': cell_ids})
+
+    return pd.DataFrame(group_dict_list)
+
+
 def main(nexus_token: str, output_directories: List[Path]):
     dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
-    on_columns = [column for column in modality_df.columns if column.isdigit()]
-    modality_df = cluster_and_coalesce(modality_df, on_columns, '**cell_shape.csv')
+    group_df = get_group_df(modality_df)
+    #    on_columns = [column for column in modality_df.columns if column.isdigit()]
+    #    modality_df = cluster_and_coalesce(modality_df, on_columns, '**cell_shape.csv')
+    #    modality_df = coalesce_columns(modality_df, '**cell_shape.csv', on_columns)
 
     modality_df.to_csv('codex.csv')
+    group_df.to_csv('codex_group.csv')
 
 
 if __name__ == '__main__':
