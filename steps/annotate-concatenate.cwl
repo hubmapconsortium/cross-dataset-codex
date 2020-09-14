@@ -4,7 +4,7 @@ label: Annotates each h5ad file with dataset and tissue type, then concatenates
 
 hints:
   DockerRequirement:
-    dockerPull: hubmap/cross-dataset-sprm:latest
+    dockerPull: hubmap/cross-dataset-codex:latest
 baseCommand: /opt/parse_sprm_output.py
 
 inputs:

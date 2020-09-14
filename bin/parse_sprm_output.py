@@ -1,79 +1,17 @@
 #!/usr/bin/env python3
 
-from typing import Iterable, List
+from typing import List
 from pathlib import Path
-from os import walk
 from sklearn.cluster import KMeans
 from argparse import ArgumentParser
 from functools import reduce
+from cross_dataset_common import find_files, get_tissue_type
 import pandas as pd
-import requests
-import yaml
 import json
 
 
 def get_dataset(dataset_directory: Path) -> str:
-    return dataset_directory.stem
-
-
-def get_tissue_type(dataset: str, token: str) -> str:
-    organ_dict = yaml.load(open('/opt/organ_types.yaml'), Loader=yaml.BaseLoader)
-
-    dataset_query_dict = {
-        "query": {
-            "bool": {
-                "must": [],
-                "filter": [
-                    {
-                        "match_all": {}
-                    },
-                    {
-                        "exists": {
-                            "field": "files.rel_path"
-                        }
-                    },
-                    {
-                        "match_phrase": {
-                            "uuid": {
-                                "query": dataset
-                            },
-                        }
-
-                    }
-                ],
-                "should": [],
-                "must_not": [
-                    {
-                        "match_phrase": {
-                            "status": {
-                                "query": "Error"
-                            }
-                        }
-                    }
-                ]
-            }
-        }
-    }
-
-    dataset_response = requests.post(
-        'https://search.api.hubmapconsortium.org/search',
-        json=dataset_query_dict,
-        headers={'Authorization': 'Bearer ' + token})
-    hits = dataset_response.json()['hits']['hits']
-
-    for hit in hits:
-        for ancestor in hit['_source']['ancestors']:
-            if 'organ' in ancestor.keys():
-                return organ_dict[ancestor['organ']]['description']
-
-
-def get_csv_files(partial_file_name: str, directory: Path) -> Iterable[Path]:
-    for dirpath_str, dirnames, filenames in walk(directory):
-        dirpath = Path(dirpath_str)
-        for filename in filenames:
-            filepath = dirpath / filename
-            if filepath.match(partial_file_name):
-                yield filepath
+    return dataset_directory.parent.stem
 
 
 def get_tile_id(file: Path) -> str:
@@ -125,7 +63,7 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.
     dataset = get_dataset(dataset_directory)
     tissue_type = get_tissue_type(dataset, nexus_token)
 
-    csv_files = list(get_csv_files(data_file, dataset_directory))
+    csv_files = list(find_files(data_file, dataset_directory))
 
     tile_dfs = [pd.read_csv(csv_file) for csv_file in csv_files]
     tile_ids = [get_tile_id(csv_file) for csv_file in csv_files]
@@ -180,12 +118,13 @@ def get_group_df(modality_df: pd.DataFrame) -> pd.DataFrame:
         for group_id in modality_df[group_type].unique():
             grouping_df = modality_df[modality_df[group_type] == group_id].copy()
             cell_ids = list(grouping_df['cell_id'].unique())
-            group_dict_list.append({'group_type': group_type, 'group_id': group_id, 'cells': cell_ids})
+            group_dict_list.append({'group_type': group_type, 'group_id': str(group_id), 'cells': cell_ids})
 
     return pd.DataFrame(group_dict_list)
 
 
 def main(nexus_token: str, output_directories: List[Path]):
+    output_directories = [output_directory / Path('sprm_outputs') for output_directory in output_directories]
     dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
     group_df = get_group_df(modality_df)

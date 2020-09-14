@@ -11,6 +11,7 @@ RUN apt-get update \
     automake \
     bison \
     flex \
+    git \
     libfreetype6-dev \
     libigraph0-dev \
     libxml2-dev \
