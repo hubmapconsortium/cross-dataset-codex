@@ -8,6 +8,7 @@ from functools import reduce
 from cross_dataset_common import find_files, get_tissue_type
 import pandas as pd
 import json
+import numpy as np
 
 
 def get_dataset(dataset_directory: Path) -> str:
@@ -116,9 +117,10 @@ def get_group_df(modality_df: pd.DataFrame) -> pd.DataFrame:
 
     for group_type in group_columns:
         for group_id in modality_df[group_type].unique():
-            grouping_df = modality_df[modality_df[group_type] == group_id].copy()
-            cell_ids = list(grouping_df['cell_id'].unique())
-            group_dict_list.append({'group_type': group_type, 'group_id': str(group_id), 'cells': cell_ids})
+            if not np.isnan(group_id) or type(group_id) == str:
+                grouping_df = modality_df[modality_df[group_type] == group_id].copy()
+                cell_ids = list(grouping_df['cell_id'].unique())
+                group_dict_list.append({'group_type': group_type, 'group_id': str(group_id), 'cells': cell_ids})
 
     return pd.DataFrame(group_dict_list)
 
