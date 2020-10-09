@@ -22,8 +22,8 @@ inputs:
       position: 2
 
 outputs:
-  csv_files:
-    type: File[]
-    doc: csv files containing annotated and concatenated cell and protein data
+  hdf5_file:
+    type: File
+    doc: hdf5 file containing dataframes for cell and group level data
     outputBinding:
-      glob: "*.csv"
+      glob: "codex.hdf5"

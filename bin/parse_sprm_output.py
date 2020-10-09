@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import List
+from typing import List, Iterable
 from pathlib import Path
 from sklearn.cluster import KMeans
 from argparse import ArgumentParser
@@ -24,26 +24,24 @@ def get_attribute(file: Path) -> str:
 
 
 def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str]) -> pd.DataFrame:
-    if data_file == '**cell_shape.csv':
 
-        column_name = 'cell_shape'
+    print('coalesce_columns called')
 
-        df[column_name] = []
-        for i, row in df.iterrows():
-            cell_shape_list = [row[column] for column in on_columns]
-            df.at[i, column_name] = cell_shape_list
+    assert on_columns[0] in df.columns
 
-    else:
+    column_name = 'protein_' + data_file.split('_')[-1][:-4]
+    dapi_columns = [column for column in df.columns if 'DAPI' in column]
 
-        column_name = 'protein_' + data_file.split('_')[-1][:-4]
-        dapi_columns = [column for column in df.columns if 'DAPI' in column]
+    json_list = []
 
-        df[column_name] = ""
-        for i, row in df.iterrows():
-            protein_dict = {column: row[column] for column in on_columns}
-            df.at[i, column_name] = json.dumps(protein_dict)
+    for i, row in df.iterrows():
+        protein_dict = {str(column): str(row[column]) for column in on_columns}
+        json_item = str(json.dumps(protein_dict))
+        json_list.append(json_item)
 
-        df.drop(dapi_columns, axis=1, inplace=True)
+    df[column_name] = pd.Series(json_list, dtype=object)
+
+    df.drop(dapi_columns, axis=1, inplace=True)
 
     df.drop(on_columns, axis=1, inplace=True)
 
@@ -51,22 +49,24 @@ def coalesce_columns(df: pd.DataFrame, data_file: str, on_columns: List[str]) ->
 
 
 def cluster_and_coalesce(df: pd.DataFrame, on_columns: List[str], data_file: str) -> pd.DataFrame:
+    print('cluster and coalesce called')
     cluster_column_header = 'cluster_by_' + data_file.split('_')[-1][:-4]
 
     data = df[on_columns].to_numpy()
     cluster_assignments = KMeans(n_clusters=6, random_state=0).fit(data)
-    df[cluster_column_header] = pd.Series(cluster_assignments.labels_)
+    df[cluster_column_header] = pd.Series(cluster_assignments.labels_, dtype=object)
     return coalesce_columns(df, data_file, on_columns)
 
 
 def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+    print('stitch_df called')
     modality = 'codex'
     dataset = get_dataset(dataset_directory)
     tissue_type = get_tissue_type(dataset, nexus_token)
 
-    csv_files = list(find_files(data_file, dataset_directory))
+    csv_files = list(find_files(dataset_directory, data_file))
 
-    tile_dfs = [pd.read_csv(csv_file) for csv_file in csv_files]
+    tile_dfs = [pd.read_csv(csv_file, dtype=object) for csv_file in csv_files]
     tile_ids = [get_tile_id(csv_file) for csv_file in csv_files]
 
     for i, tile_df in enumerate(tile_dfs):
@@ -85,7 +85,8 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.
 
     if data_file != '**cell_shape.csv':
         protein_columns = [column for column in stitched_df.columns if column != 'cell_id' and 'DAPI' not in column]
-        stitched_df = cluster_and_coalesce(tile_dfs[0], protein_columns, data_file)
+
+        stitched_df = cluster_and_coalesce(stitched_df, protein_columns, data_file)
 
     stitched_df['dataset'] = dataset
     stitched_df['tissue_type'] = tissue_type
@@ -95,12 +96,11 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.
 
 
 def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrame) -> pd.DataFrame:
-    return pd.merge(df_1, df_2, how='outer')
+    return df_1.merge(df_2, how='outer')
 
 
 def get_dataset_df(dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
-    #    per_cell_data_files = ['**cell_shape.csv', '**cell_channel_covar.csv', '**cell_channel_mean.csv',
-    #                           '**cell_channel_total.csv']
+
     per_cell_data_files = ['**cell_channel_covar.csv', '**cell_channel_mean.csv',
                            '**cell_channel_total.csv']
 
@@ -117,7 +117,7 @@ def get_group_df(modality_df: pd.DataFrame) -> pd.DataFrame:
 
     for group_type in group_columns:
         for group_id in modality_df[group_type].unique():
-            if not np.isnan(group_id) or type(group_id) == str:
+            if type(group_id) == str or not np.isnan(group_id) :
                 grouping_df = modality_df[modality_df[group_type] == group_id].copy()
                 cell_ids = list(grouping_df['cell_id'].unique())
                 group_dict_list.append({'group_type': group_type, 'group_id': str(group_id), 'cells': cell_ids})
@@ -130,12 +130,10 @@ def main(nexus_token: str, output_directories: List[Path]):
     dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
     group_df = get_group_df(modality_df)
-    #    on_columns = [column for column in modality_df.columns if column.isdigit()]
-    #    modality_df = cluster_and_coalesce(modality_df, on_columns, '**cell_shape.csv')
-    #    modality_df = coalesce_columns(modality_df, '**cell_shape.csv', on_columns)
 
-    modality_df.to_csv('codex.csv')
-    group_df.to_csv('codex_group.csv')
+    with pd.HDFStore('codex.hdf5') as store:
+        store['cell'] = modality_df
+        store['group'] = group_df
 
 
 if __name__ == '__main__':

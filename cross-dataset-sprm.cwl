@@ -14,9 +14,9 @@ inputs:
     type: string
 
 outputs:
-  csv_files:
-    outputSource: annotate-concatenate/csv_files
-    type: File[]
+  hdf5_file:
+    outputSource: annotate-concatenate/hdf5_file
+    type: File
 
 steps:
 
@@ -28,7 +28,7 @@ steps:
         source: nexus_token
 
     out:
-      - csv_files
+      - hdf5_file
 
     run: steps/annotate-concatenate.cwl
     label: "Annotates and concatenates csv files, writes out csvs"
