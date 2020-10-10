@@ -132,8 +132,8 @@ def main(nexus_token: str, output_directories: List[Path]):
     group_df = get_group_df(modality_df)
 
     with pd.HDFStore('codex.hdf5') as store:
-        store['cell'] = modality_df
-        store['group'] = group_df
+        store.put('cell', modality_df, format='t')
+        store.put('group', group_df)
 
 
 if __name__ == '__main__':
