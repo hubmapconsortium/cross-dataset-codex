@@ -111,30 +111,27 @@ def get_dataset_df(dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
     return dataset_df
 
 
-def get_group_df(modality_df: pd.DataFrame) -> pd.DataFrame:
-    group_columns = [column for column in modality_df.columns if 'cluster' in column or 'tissue' in column]
-    group_dict_list = []
+def get_organ_df(modality_df: pd.DataFrame) -> pd.DataFrame:
+    organ_dict_list = []
 
-    for group_type in group_columns:
-        for group_id in modality_df[group_type].unique():
-            if type(group_id) == str or not np.isnan(group_id) :
-                grouping_df = modality_df[modality_df[group_type] == group_id].copy()
-                cell_ids = list(grouping_df['cell_id'].unique())
-                group_dict_list.append({'group_type': group_type, 'group_id': str(group_id), 'cells': cell_ids})
+    for organ_name in modality_df['tissue_type'].unique():
+        if type(organ_name) == str:
+            grouping_df = modality_df[modality_df['tissue_type'] == organ_name].copy()
+            cell_ids = list(grouping_df['cell_id'].unique())
+            organ_dict_list.append({'organ_name': str(organ_name), 'cells': cell_ids})
 
-    return pd.DataFrame(group_dict_list)
+    return pd.DataFrame(organ_dict_list)
 
 
 def main(nexus_token: str, output_directories: List[Path]):
-    output_directories = [output_directory / Path('sprm_outputs') for output_directory in output_directories]
+    output_directories = [output_directory for output_directory in output_directories]
     dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
-    group_df = get_group_df(modality_df)
+    organ_df = get_organ_df(modality_df)
 
     with pd.HDFStore('codex.hdf5') as store:
-        store.put('cell', modality_df, format='t')
-        store.put('group', group_df)
-
+        store.put('cell', modality_df)
+        store.put('organ', organ_df)
 
 if __name__ == '__main__':
     p = ArgumentParser()
