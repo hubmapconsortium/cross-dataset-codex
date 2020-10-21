@@ -8,11 +8,12 @@ from functools import reduce
 from cross_dataset_common import find_files, get_tissue_type
 import pandas as pd
 import json
-import numpy as np
+from os import fspath
 
 
 def get_dataset(dataset_directory: Path) -> str:
     return dataset_directory.parent.stem
+
 
 
 def get_tile_id(file: Path) -> str:
@@ -63,6 +64,8 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.
     modality = 'codex'
     dataset = get_dataset(dataset_directory)
     tissue_type = get_tissue_type(dataset, nexus_token)
+
+    print(tissue_type)
 
     csv_files = list(find_files(dataset_directory, data_file))
 
@@ -124,7 +127,7 @@ def get_organ_df(modality_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main(nexus_token: str, output_directories: List[Path]):
-    output_directories = [output_directory for output_directory in output_directories]
+    output_directories = [output_directory / Path('sprm_outputs') for output_directory in output_directories]
     dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
     organ_df = get_organ_df(modality_df)
