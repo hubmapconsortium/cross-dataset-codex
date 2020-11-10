@@ -4,7 +4,7 @@ label: Annotates each h5ad file with dataset and tissue type, then concatenates
 
 hints:
   DockerRequirement:
-    dockerPull: hubmap/cross-dataset-codex:latest
+    dockerPull: hubmap/cross-dataset-codex:single
 baseCommand: /opt/parse_sprm_output.py
 
 inputs:
@@ -15,11 +15,17 @@ inputs:
     inputBinding:
       position: 1
 
-  data_directories:
-    type: Directory[]
-    doc: List of paths to processed dataset directories
+  data_directory:
+    type: Directory
+    doc: Path to dataset directory
     inputBinding:
       position: 2
+
+  uuid:
+    type: string
+    doc: String representation of 32 character UUID
+    inputBinding:
+        position: 3
 
 outputs:
   hdf5_file:

@@ -5,9 +5,13 @@ cwlVersion: v1.0
 label: Pipeline for parsing and aggregating SPRM output across codex datasets
 
 inputs:
-  data_directories:
-    label: "List of paths to all processed RNA datasets"
-    type: Directory[]
+  data_directory:
+    label: "Path to processed codex dataset"
+    type: Directory
+
+  uuid:
+    label: "32 character UUID corresponding to dataset"
+    type: string
 
   nexus_token:
     label: "Valid nexus token for search-api"
@@ -22,10 +26,12 @@ steps:
 
   - id: annotate-concatenate
     in:
-      - id: data_directories
-        source: data_directories
+      - id: data_directory
+        source: data_directory
       - id: nexus_token
         source: nexus_token
+      - id: uuid
+        source: uuid
 
     out:
       - hdf5_file

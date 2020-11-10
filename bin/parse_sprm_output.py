@@ -59,10 +59,10 @@ def cluster_and_coalesce(df: pd.DataFrame, on_columns: List[str], data_file: str
     return coalesce_columns(df, data_file, on_columns)
 
 
-def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str, uuid: str) -> pd.DataFrame:
     print('stitch_df called')
     modality = 'codex'
-    dataset = get_dataset(dataset_directory)
+    dataset = uuid
     tissue_type = get_tissue_type(dataset, nexus_token)
 
     print(tissue_type)
@@ -102,12 +102,12 @@ def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrame) -> pd.DataFrame:
     return df_1.merge(df_2, how='outer')
 
 
-def get_dataset_df(dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+def get_dataset_df(dataset_directory: Path, nexus_token: str, uuid:str) -> pd.DataFrame:
 
     per_cell_data_files = ['**cell_channel_covar.csv', '**cell_channel_mean.csv',
                            '**cell_channel_total.csv']
 
-    stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
+    stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token, uuid) for data_file in per_cell_data_files]
 
     dataset_df = reduce(outer_join, stitched_dfs)
 
@@ -126,9 +126,9 @@ def get_organ_df(modality_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(organ_dict_list)
 
 
-def main(nexus_token: str, output_directories: List[Path]):
+def main(nexus_token: str, output_directories: Path, uuid:str):
     output_directories = [output_directory / Path('sprm_outputs') for output_directory in output_directories]
-    dataset_dfs = [get_dataset_df(dataset_directory, nexus_token) for dataset_directory in output_directories]
+    dataset_dfs = [get_dataset_df(dataset_directory, nexus_token, uuid) for dataset_directory in output_directories]
     modality_df = pd.concat(dataset_dfs)
     organ_df = get_organ_df(modality_df)
 
@@ -139,7 +139,8 @@ def main(nexus_token: str, output_directories: List[Path]):
 if __name__ == '__main__':
     p = ArgumentParser()
     p.add_argument('nexus_token', type=str)
-    p.add_argument('data_directories', type=Path, nargs='+')
+    p.add_argument('data_directory', type=Path)
+    p.add_argument('uuid', type=str)
     args = p.parse_args()
 
-    main(args.nexus_token, args.data_directories)
+    main(args.nexus_token, args.data_directory, args.uuid)
