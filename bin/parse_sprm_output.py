@@ -126,14 +126,12 @@ def get_organ_df(modality_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(organ_dict_list)
 
 
-def main(nexus_token: str, output_directories: Path, uuid:str):
-    output_directories = [output_directory / Path('sprm_outputs') for output_directory in output_directories]
-    dataset_dfs = [get_dataset_df(dataset_directory, nexus_token, uuid) for dataset_directory in output_directories]
-    modality_df = pd.concat(dataset_dfs)
-    organ_df = get_organ_df(modality_df)
+def main(nexus_token: str, output_directory: Path, uuid:str):
+    dataset_df = get_dataset_df(output_directory, nexus_token, uuid)
+    organ_df = get_organ_df(dataset_df)
 
     with pd.HDFStore('codex.hdf5') as store:
-        store.put('cell', modality_df)
+        store.put('cell', dataset_df)
         store.put('organ', organ_df)
 
 if __name__ == '__main__':
