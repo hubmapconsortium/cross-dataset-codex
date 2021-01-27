@@ -5,9 +5,9 @@ cwlVersion: v1.0
 label: Pipeline for parsing and aggregating SPRM output across codex datasets
 
 inputs:
-  data_directory:
+  data_directories:
     label: "Path to processed codex dataset"
-    type: Directory
+    type: Directory[]
 
   uuid:
     label: "32 character UUID corresponding to dataset"

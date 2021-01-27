@@ -73,7 +73,7 @@ def get_dataset_dfs(dataset_directory: Path, nexus_token: str, uuid: str) -> (pd
     return dataset_df, quant_df
 
 
-def main(nexus_token: str, output_directory: Path, uuid: str):
+def main(nexus_token: str, output_directory: List[Path], uuid: str):
     dataset_df, quant_df = get_dataset_dfs(output_directory, nexus_token, uuid)
 
     with pd.HDFStore('codex.hdf5') as store:
@@ -83,8 +83,8 @@ def main(nexus_token: str, output_directory: Path, uuid: str):
 
 if __name__ == '__main__':
     p = ArgumentParser()
-    p.add_argument('data_directory', type=Path)
     p.add_argument('uuid', type=str)
+    p.add_argument('data_directories', type=Path, nargs='+')
     args = p.parse_args()
 
     main(args.nexus_token, args.data_directory, args.uuid)

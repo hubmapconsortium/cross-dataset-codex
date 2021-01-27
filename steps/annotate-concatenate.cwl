@@ -21,8 +21,8 @@ inputs:
     inputBinding:
       position: 1
 
-  data_directory:
-    type: Directory
+  data_directories:
+    type: Directory[]
     doc: Path to dataset directory
     inputBinding:
       position: 2
