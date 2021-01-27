@@ -22,6 +22,10 @@ outputs:
     outputSource: annotate-concatenate/hdf5_file
     type: File
 
+  csv_file:
+    outputSource: annotate-concatenate/csv_file
+    type: File
+
 steps:
 
   - id: annotate-concatenate
@@ -35,6 +39,7 @@ steps:
 
     out:
       - hdf5_file
+      - csv_file
 
     run: steps/annotate-concatenate.cwl
     label: "Annotates and concatenates csv files, writes out csvs"

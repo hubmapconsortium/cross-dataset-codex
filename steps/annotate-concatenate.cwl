@@ -39,3 +39,9 @@ outputs:
     doc: hdf5 file containing dataframes for cell and group level data
     outputBinding:
       glob: "codex.hdf5"
+
+  csv_file:
+    type: File
+    doc: csv file containing dataframes for quantitative data
+    outputBinding:
+      glob: "codex.csv"
