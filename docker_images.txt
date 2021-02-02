@@ -1,1 +1,1 @@
-hubmap/cross-dataset-codex-single	docker/Dockerfile	base_directory_build
+hubmap/cross-dataset-codex	docker/Dockerfile	base_directory_build

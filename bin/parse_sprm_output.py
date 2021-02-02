@@ -3,14 +3,15 @@
 from argparse import ArgumentParser
 from functools import reduce
 from pathlib import Path
+from typing import List
 
 import pandas as pd
-from cross_dataset_common import find_files, get_tissue_type
+from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset
 from hubmap_cell_id_gen_py import get_spatial_cell_id
 
 
 def get_dataset(dataset_directory: Path) -> str:
-    return dataset_directory.parent.stem
+    return dataset_directory.stem
 
 
 def get_tile_id(file: Path) -> str:
@@ -28,9 +29,9 @@ def flatten_df(df: pd.DataFrame, statistic:str) -> pd.DataFrame:
     return pd.DataFrame(dict_list)
 
 
-def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str, uuid: str) -> pd.DataFrame:
+def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
     modality = 'codex'
-    dataset = uuid
+    dataset = get_dataset(dataset_directory)
     tissue_type = get_tissue_type(dataset, nexus_token)
 
     csv_files = list(find_files(dataset_directory, data_file))
@@ -44,7 +45,7 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str, uuid: 
             [get_spatial_cell_id(dataset, tile_id, mask_index) for mask_index in tile_df['ID']])
         tile_df.drop(['ID'], axis=1, inplace=True)
 
-    stitched_df = reduce(outer_join, tile_dfs)
+    stitched_df = reduce(outer_join, [id_and_df[1] for id_and_df in tile_ids_and_dfs])
 
     stitched_df['dataset'] = dataset
     stitched_df['organ_name'] = tissue_type
@@ -57,10 +58,10 @@ def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrame) -> pd.DataFrame:
     return df_1.merge(df_2, how='outer')
 
 
-def get_dataset_dfs(dataset_directory: Path, nexus_token: str, uuid: str) -> (pd.DataFrame, pd.DataFrame):
+def get_dataset_dfs(dataset_directory: Path, nexus_token: str) -> (pd.DataFrame, pd.DataFrame):
     per_cell_data_files = ['**cell_channel_covar.csv', '**cell_channel_mean.csv']
 
-    stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token, uuid) for data_file in per_cell_data_files]
+    stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
     statistics = [file.split('_')[0] for file in per_cell_data_files]
     stitched_dfs_and_stats = zip(stitched_dfs, statistics)
 
@@ -73,18 +74,28 @@ def get_dataset_dfs(dataset_directory: Path, nexus_token: str, uuid: str) -> (pd
     return dataset_df, quant_df
 
 
-def main(nexus_token: str, output_directory: List[Path], uuid: str):
-    dataset_df, quant_df = get_dataset_dfs(output_directory, nexus_token, uuid)
+def main(nexus_token: str, dataset_directories: List[Path]):
+    dataset_dfs = []
+    quant_dfs = []
+    for dataset_directory in dataset_directories:
+        dataset_df, quant_df = get_dataset_dfs(dataset_directory, nexus_token)
+        dataset_dfs.append(dataset_df)
+        quant_dfs.append(dataset_df)
+
+    cell_df = pd.concat(dataset_dfs)
+    quant_df = pd.concat(quant_dfs)
 
     with pd.HDFStore('codex.hdf5') as store:
-        store.put('cell', dataset_df)
+        store.put('cell', cell_df)
+
+    create_minimal_dataset(cell_df, quant_df, modality='codex')
 
     quant_df.to_csv('codex.csv')
 
 if __name__ == '__main__':
     p = ArgumentParser()
-    p.add_argument('uuid', type=str)
+    p.add_argument('nexus_token', type=str)
     p.add_argument('data_directories', type=Path, nargs='+')
     args = p.parse_args()
 
-    main(args.nexus_token, args.data_directory, args.uuid)
+    main(args.nexus_token, args.data_directories)
