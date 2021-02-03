@@ -36,3 +36,15 @@ outputs:
     doc: csv file containing dataframes for quantitative data
     outputBinding:
       glob: "codex.csv"
+
+  mini_hdf5_file:
+    type: File
+    doc: hdf5 file containing dataframes for cell and group level minimal data
+    outputBinding:
+      glob: "mini_codex.hdf5"
+
+  mini_csv_file:
+    type: File
+    doc: csv file containing dataframes for minimal quantitative data
+    outputBinding:
+      glob: "mini_codex.csv"

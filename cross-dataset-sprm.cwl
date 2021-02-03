@@ -23,18 +23,28 @@ outputs:
     outputSource: annotate-concatenate/csv_file
     type: File
 
+  mini_hdf5_file:
+    outputSource: annotate-concatenate/mini_hdf5_file
+    type: File
+
+  mini_csv_file:
+    outputSource: annotate-concatenate/mini_csv_file
+    type: File
+
 steps:
 
   - id: annotate-concatenate
     in:
-      - id: data_directory
-        source: data_directory
+      - id: data_directories
+        source: data_directories
       - id: nexus_token
         source: nexus_token
 
     out:
       - hdf5_file
       - csv_file
+      - mini_hdf5_file
+      - mini_csv_file
 
     run: steps/annotate-concatenate.cwl
     label: "Annotates and concatenates csv files, writes out csvs"
