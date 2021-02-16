@@ -12,7 +12,7 @@ inputs:
 
   nexus_token:
     label: "Valid nexus token for search-api"
-    type: string
+    type: string?
 
 outputs:
   hdf5_file:

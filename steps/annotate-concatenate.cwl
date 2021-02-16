@@ -12,10 +12,11 @@ baseCommand: /opt/parse_sprm_output.py
 inputs:
 
   nexus_token:
-    type: string
+    type: string?
     doc: Valid nexus token for search-api
     inputBinding:
       position: 1
+    default: "None"
 
   data_directories:
     type: Directory[]

@@ -145,6 +145,7 @@ def get_dataset_dfs(dataset_directory: Path, nexus_token: str) -> (pd.DataFrame,
 
 
 def main(nexus_token: str, dataset_directories: List[Path]):
+    nexus_token = None if nexus_token == "None" else nexus_token
     dataset_dfs = {}
     quant_dfs = []
     for dataset_directory in dataset_directories:
