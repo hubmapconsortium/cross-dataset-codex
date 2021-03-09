@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Dict
 
 import pandas as pd
-from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset
+from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset, tar_zip_scp
 from hubmap_cell_id_gen_py import get_spatial_cell_id
 
 def get_cluster_assignments(dataset_dfs, tile_ids)->dict:
@@ -144,7 +144,7 @@ def get_dataset_dfs(dataset_directory: Path, nexus_token: str) -> (pd.DataFrame,
     return dataset_df, quant_df
 
 
-def main(nexus_token: str, dataset_directories: List[Path]):
+def main(nexus_token: str, known_hosts_file: Path, dataset_directories: List[Path]):
     nexus_token = None if nexus_token == "None" else nexus_token
     dataset_dfs = {}
     quant_dfs = []
@@ -175,10 +175,13 @@ def main(nexus_token: str, dataset_directories: List[Path]):
 
     quant_df.to_csv('codex.csv')
 
+    tar_zip_scp("codex", known_hosts_file)
+
 if __name__ == '__main__':
     p = ArgumentParser()
     p.add_argument('nexus_token', type=str)
+    p.add_argument('known_hosts_file', type=Path)
     p.add_argument('data_directories', type=Path, nargs='+')
     args = p.parse_args()
 
-    main(args.nexus_token, args.data_directories)
+    main(args.nexus_token, args.known_hosts_file, args.data_directories)
