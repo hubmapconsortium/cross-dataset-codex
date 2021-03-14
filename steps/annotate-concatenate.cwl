@@ -18,17 +18,11 @@ inputs:
       position: 1
     default: "None"
 
-  known_hosts_file:
-    type: File
-    doc: Path to known hosts file
-    inputBinding:
-      position: 2
-
   data_directories:
     type: Directory[]
     doc: Path to dataset directory
     inputBinding:
-      position: 3
+      position: 2
 
 
 outputs:

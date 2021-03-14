@@ -98,7 +98,7 @@ def get_dataset_dfs(dataset_directory: Path, nexus_token: str=None) -> (pd.DataF
     return dataset_df, quant_df
 
 
-def main(nexus_token: str, known_hosts_file: Path, dataset_directories: List[Path]):
+def main(nexus_token: str, dataset_directories: List[Path]):
     nexus_token = None if nexus_token == "None" else nexus_token
 
     with ThreadPoolExecutor(max_workers=len(dataset_directories)) as e:
@@ -119,13 +119,10 @@ def main(nexus_token: str, known_hosts_file: Path, dataset_directories: List[Pat
 
     quant_df.to_csv('codex.csv')
 
-    tar_zip_scp("codex", known_hosts_file)
-
 if __name__ == '__main__':
     p = ArgumentParser()
     p.add_argument('nexus_token', type=str)
-    p.add_argument('known_hosts_file', type=Path)
     p.add_argument('data_directories', type=Path, nargs='+')
     args = p.parse_args()
 
-    main(args.nexus_token, args.known_hosts_file, args.data_directories)
+    main(args.nexus_token, args.data_directories)

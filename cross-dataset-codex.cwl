@@ -9,13 +9,10 @@ inputs:
     label: "Path to processed codex dataset"
     type: Directory[]
 
+
   nexus_token:
     label: "Valid nexus token for search-api"
     type: string?
-
-  known_hosts_file:
-    label: "Path to known hosts file"
-    type: File
 
 outputs:
   hdf5_file:
@@ -42,8 +39,6 @@ steps:
         source: data_directories
       - id: nexus_token
         source: nexus_token
-      - id: known_hosts_file
-        source: known_hosts_file
 
     out:
       - hdf5_file
