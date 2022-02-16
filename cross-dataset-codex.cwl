@@ -19,16 +19,16 @@ outputs:
     outputSource: annotate-concatenate/hdf5_file
     type: File
 
-  csv_file:
-    outputSource: annotate-concatenate/csv_file
+  h5ad_file:
+    outputSource: annotate-concatenate/h5ad_file
     type: File
 
-  mini_hdf5_file:
-    outputSource: annotate-concatenate/mini_hdf5_file
+  adjacency_file:
+    outputSource: annotate-concatenate/adjacency_file
     type: File
 
-  mini_csv_file:
-    outputSource: annotate-concatenate/mini_csv_file
+  precompute_file:
+    outputSource: annotate-concatenate/precompute_file
     type: File
 
 steps:
@@ -42,9 +42,9 @@ steps:
 
     out:
       - hdf5_file
-      - csv_file
-      - mini_hdf5_file
-      - mini_csv_file
+      - h5ad_file
+      - adjacency_file
+      - precompute_file
 
     run: steps/annotate-concatenate.cwl
     label: "Annotates and concatenates csv files, writes out csvs"

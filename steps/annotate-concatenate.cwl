@@ -32,20 +32,20 @@ outputs:
     outputBinding:
       glob: "codex.hdf5"
 
-  csv_file:
+  h5ad_file:
     type: File
-    doc: csv file containing dataframes for quantitative data
+    doc: h5ad file containing numeric expression data and cell annotations
     outputBinding:
-      glob: "codex.csv"
+      glob: "codex.h5ad"
 
-  mini_hdf5_file:
+  adjacency_file:
     type: File
-    doc: hdf5 file containing dataframes for cell and group level minimal data
+    doc: h5ad file containing cell by cell distance/adjacency matrix
     outputBinding:
-      glob: "mini_codex.hdf5"
+      glob: "codex_adjacency.h5ad"
 
-  mini_csv_file:
+  precompute_file:
     type: File
-    doc: csv file containing dataframes for minimal quantitative data
+    doc: hdf5 file containing precomputed results for accelerated queries
     outputBinding:
-      glob: "mini_codex.csv"
+      glob: "codex_precompute.hdf5"

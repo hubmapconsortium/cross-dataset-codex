@@ -4,12 +4,84 @@ from argparse import ArgumentParser
 from functools import reduce
 from pathlib import Path
 from typing import List, Dict, Iterable
+from scipy.io import mmread
+from scipy.sparse import coo_matrix
 
+import anndata
 import pandas as pd
 from hubmap_cell_id_gen_py import get_spatial_cell_id
-from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset
+from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset, precompute_dataset_percentages
 
 from concurrent.futures import ThreadPoolExecutor
+
+ADJACENCY_MATRIX_PATH_PATTERN = 'reg1_stitched_expressions.ome.tiff_AdjacencyMatrix.mtx'
+
+def precompute_dataset_values_series(dataset_df, dataset_adata):
+    param_tuples_list = [(dataset_df, dataset_adata, var) for var in adata.index]
+    with ThreadPoolExecutor(max_workers=20) as e:
+        values_series_dicts = e.map(precompute_dataset_single_values_series, param_tuples_list)
+    values_series_dict = {}
+    for vsd in values_series_dicts:
+        values_series_dict.update(vsd)
+
+    return values_series_dict
+
+def precompute_dataset_single_values_series(cell_df_subset, dataset_adata, var):
+    values_series_dict = {}
+    values_list = [json.dumps({'var': dataset_adata[cell, var]} for cell in cell_df_subset.index)]
+    values_series = pd.Series(values_list, index=cell_df_subset.index)
+    values_series_dict[f"{dataset}+{var}"] = values_series
+    return values_series_dict
+
+def precompute_values_series(cell_df, adata):
+    dataset_dfs = [cell_df[cell_df["dataset"] == dataset] for dataset in cell_df["dataset"].unique()]
+    cell_ids_lists = [list(dataset_df["cell_id"].unique()) for dataset_df in dataset_dfs]
+    dataset_adatas = [adata[cell_id_list] for cell_id_list in cell_ids_lists]
+
+    param_tuples_list = [(dataset_dfs[i], dataset_adatas[i]) for i in range(len(dataset_dfs))]
+
+    with ThreadPoolExecutor(max_workers=10) as e:
+        values_series_dicts = e.map(precompute_dataset_values_series, param_tuples_list)
+    values_series_dict = {}
+    for vsd in values_series_dicts:
+        values_series_dict.update(vsd)
+
+    return values_series_dict
+
+def get_adjacency_adata(adjacency_file):
+    region = get_reg_id(file)
+    dataset_uuid = adjacency_file.parent.parent.stem
+    matrix = mmread(adjacency_file)
+    cells = [f"{dataset_uuid}-{region}-{rows[i]}"for i in range(matrix.shape[0])]
+    obs = pd.DataFrame(index=cells)
+    var = pd.DataFrame(index=cells)
+    cell_by_cell_adata = anndata.AnnData(X=matrix, obs=obs, var=var)
+    return cell_by_cell_adata
+
+def get_dataset_adjacency_adata(dataset_directory):
+    adjacency_files = find_files(dataset_directory, ADJACENCY_MATRIX_PATH_PATTERN)
+    if len(adjacency_files) == 0:
+        return None
+    adjacency_adatas = [get_adjacency_adata(file) for file in adjacency_files]
+    if len(adjacency_adatas) == 1:
+        return adjacency_adatas[0]
+    dataset_adjacency_adata = adjacency_adatas[0].concatenate(adjacency_adatas[1:])
+    return dataset_adjacency_adata
+
+def make_anndata(quant_df):
+
+    on_columns = [column for column in df.columns if column not in ['cell_id', 'clusters', 'dataset', 'organ', 'tile',
+                                                                    'modality'] and 'DAPI' not in column]
+    var = pd.DataFrame(index=on_columns)
+    obs = pd.DataFrame(index=quant_dfs_and_stats[0][0].index)
+    adata = anndata.AnnData(var=var, obs=obs)
+
+    for i in df.index:
+        for column in on_columns:
+            adata.X[i][column] = quant_df.at[i, column]
+
+    return adata
+
 
 def get_dataset(dataset_directory: Path) -> str:
     return dataset_directory.stem
@@ -18,8 +90,10 @@ def get_dataset(dataset_directory: Path) -> str:
 def get_tile_id(file: Path) -> str:
     return str(file.stem).split('.')[0]
 
+def get_reg_id(file: str) -> str:
+    return str(file.stem).split('_')[0]
 
-def get_cluster_assignments(dataset_directory, tile):
+def get_cluster_assignments_tile(dataset_directory, tile):
     cluster_file = dataset_directory / Path(f"sprm_outputs/{tile}.ome.tiff-cell_cluster.csv")
     cluster_df = pd.read_csv(cluster_file)
 
@@ -29,18 +103,18 @@ def get_cluster_assignments(dataset_directory, tile):
 
     return cluster_assignments_list
 
+def get_cluster_assignments_stitched(dataset_directory, region):
+    cluster_file = dataset_directory / Path(f"sprm_outputs/{region}_stitched_expressions.ome.tiff-cell_cluster.csv")
+    cluster_df = pd.read_csv(cluster_file)
 
-def flatten_df(df: pd.DataFrame, statistic: str) -> pd.DataFrame:
-    on_columns = [column for column in df.columns if column not in ['cell_id', 'clusters', 'dataset', 'organ', 'tile',
-                                                                    'modality'] and 'DAPI' not in column]
-    dict_list = [
-        {'q_var_id': column, 'q_cell_id': df.at[i, 'cell_id'], 'statistic': statistic, 'value': df.at[i, column]}
-        for i in df.index for column in on_columns]
+    cluster_assignments_list = [",".join([f"KMeans-{column.split('[')[1].split(']')[0]}-{dataset_directory.stem}-{tile}-" \
+                                          f"{cluster_df.at[i, column]}" for column in cluster_df.columns[1:]]) for i in
+                                cluster_df.index]
 
-    return dict_list
+    return cluster_assignments_list
 
 
-def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+def stitch_dfs_tile(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
     modality = 'codex'
     dataset = get_dataset(dataset_directory)
     tissue_type = get_tissue_type(dataset, nexus_token)
@@ -69,6 +143,34 @@ def stitch_dfs(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.
     return stitched_df
 
 
+def stitch_dfs_stitched(data_file: str, dataset_directory: Path, nexus_token: str) -> pd.DataFrame:
+    modality = 'codex'
+    dataset = get_dataset(dataset_directory)
+    tissue_type = get_tissue_type(dataset, nexus_token)
+
+    csv_files = [file for file in find_files(dataset_directory, data_file) if 'reg' in file.stem]
+
+    reg_ids_and_dfs = [(get_reg_id(file), pd.read_csv(file)) for file in csv_files]
+
+    for id_and_df in reg_ids_and_dfs:
+        tile_id = id_and_df[0]
+        tile_df = id_and_df[1]
+        tile_df['tile'] = tile_id
+        tile_df['cell_id'] = pd.Series(
+            [get_spatial_cell_id(dataset, tile_id, mask_index) for mask_index in tile_df['ID']], index=tile_df.index)
+        tile_df.drop(['ID'], axis=1, inplace=True)
+        if data_file == '**cell_channel_total.csv':  # If this is the third set of CSVs for this dataset
+            tile_df['clusters'] = pd.Series(get_cluster_assignments(dataset_directory, tile_id), index=tile_df.index)
+
+    stitched_df = concat_dfs([id_and_df[1] for id_and_df in reg_ids_and_dfs])
+
+    stitched_df['dataset'] = pd.Series([dataset for i in stitched_df.index], index=stitched_df.index)
+    stitched_df['organ'] = tissue_type
+    stitched_df['modality'] = modality
+
+    return stitched_df
+
+
 def concat_dfs(dfs: List[pd.DataFrame]):
     new_df_list = []
     for df in dfs:
@@ -80,12 +182,25 @@ def outer_join(df_1: pd.DataFrame, df_2: pd.DataFrame) -> pd.DataFrame:
     return df_1.merge(df_2, how='outer')
 
 
-def get_dataset_dfs(dataset_directory: Path, nexus_token: str=None) -> (pd.DataFrame, pd.DataFrame):
+def get_dataset_dfs_tile(dataset_directory: Path, nexus_token: str=None) -> (pd.DataFrame, anndata.AnnData):
     per_cell_data_files = ['**cell_channel_covar.csv', '**cell_channel_mean.csv', '**cell_channel_total.csv']
 
-    stitched_dfs = [stitch_dfs(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
-    statistics = [file.split('_')[2][:-4] for file in per_cell_data_files]
-    df_stats = {statistics[i]:stitched_dfs[i] for i in range(len(stitched_dfs))}
+    stitched_dfs = [stitch_dfs_tile(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
+
+    dataset_df = reduce(outer_join, stitched_dfs)
+    adata = make_anndata(stitched_dfs[1])
+
+    dataset_df = dataset_df[['cell_id', 'dataset', 'modality', 'organ', 'tile', 'clusters']]
+
+    return dataset_df, adata
+
+
+def get_dataset_dfs_stitched(dataset_directory: Path, nexus_token: str=None) -> (pd.DataFrame, anndata.AnnData):
+    per_cell_data_files = ['**cell_channel_covar.csv', '**cell_channel_mean.csv', '**cell_channel_total.csv']
+
+    stitched_dfs = [stitch_dfs_stitched(data_file, dataset_directory, nexus_token) for data_file in per_cell_data_files]
+
+    adata = make_anndata(stitched_dfs[1])
 
     quant_df_lists = []
 
@@ -93,10 +208,18 @@ def get_dataset_dfs(dataset_directory: Path, nexus_token: str=None) -> (pd.DataF
         dict_list = flatten_df(df_stats[stat], stat)
         quant_df_lists.extend(dict_list)
 
-    quant_df = pd.DataFrame(quant_df_lists)
+    dataset_df = reduce(outer_join, stitched_dfs)
+    dataset_df = dataset_df[['cell_id', 'dataset', 'modality', 'organ', 'tile', 'clusters']]
 
-    return dataset_df, quant_df
+    adata = make_anndata(stitched_dfs[1])
 
+    return dataset_df, adata
+
+def get_dataset_dfs(dataset_directory, nexus_token=None):
+    try:
+        return get_dataset_dfs_stitched(dataset_directory, nexus_token)
+    except FileNotFoundError:
+        return get_dataset_dfs_tile(dataset_directory, nexus_token)
 
 def main(nexus_token: str, dataset_directories: List[Path]):
     nexus_token = None if nexus_token == "None" else nexus_token
@@ -105,19 +228,41 @@ def main(nexus_token: str, dataset_directories: List[Path]):
         df_pairs = list(e.map(get_dataset_dfs, dataset_directories))
 
     dataset_dfs = [df_pair[0] for df_pair in df_pairs]
-    quant_dfs = [df_pair[1] for df_pair in df_pairs]
+    adatas = [df_pair[1] for df_pair in df_pairs]
+    print("Got dataset dfs and adatas")
 
-    quant_df = concat_dfs(quant_dfs)
+    with ThreadPoolExecutor(max_workers=len(directories)) as e:
+        percentage_dfs = e.map(precompute_dataset_percentages, adatas)
+
+    print("Got percentage dfs")
+
+    percentage_df = pd.concat(percentage_dfs)
+
+    adata = adatas[0].concatenate(adatas[1:])
     cell_df = concat_dfs(dataset_dfs)
 
+    print("Got cell df")
+
+    values_series_dict = precompute_values_series(cell_df, adata)
+
+    print("Got precomptued values")
+
     cell_df = cell_df[['cell_id', 'dataset', 'modality', 'organ', 'tile', 'clusters']]
+
+    adjacency_adatas = [get_dataset_adjacency_adata(dataset_directory) for dataset_directory in dataset_directories if get_adjacency_adata(dataset_directory)]
+    adjacency_adata = adjacency_adatas[0].concatenate(adjacency_adatas[1:])
+    adjacency_adata.write('codex_adjacency.h5ad')
+
+    print("Got adjacency data")
 
     with pd.HDFStore('codex.hdf5') as store:
         store.put('cell', cell_df)
 
-    create_minimal_dataset(cell_df, quant_df, modality='codex')
+    with pd.HDFStore('codex_precompute.hdf5') as store:
+        for key in values_series_dict:
+            store.put(key, values_series_dict[key])
+        store.put('percentages', percentage_df)
 
-    quant_df.to_csv('codex.csv')
 
 if __name__ == '__main__':
     p = ArgumentParser()
