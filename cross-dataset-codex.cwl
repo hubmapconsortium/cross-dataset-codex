@@ -5,10 +5,14 @@ cwlVersion: v1.0
 label: Pipeline for parsing and aggregating SPRM output across codex datasets
 
 inputs:
+
+  enable_manhole:
+    label: "Whether to enable remote debugging via 'manhole'"
+    type: boolean?
+
   data_directories:
     label: "Path to processed codex dataset"
     type: Directory[]
-
 
   nexus_token:
     label: "Valid nexus token for search-api"
@@ -35,6 +39,8 @@ steps:
 
   - id: annotate-concatenate
     in:
+      - id: enable_manhole
+        source: enable_manhole
       - id: data_directories
         source: data_directories
       - id: nexus_token

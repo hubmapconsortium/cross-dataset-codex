@@ -10,43 +10,11 @@ from scipy.sparse import coo_matrix
 import anndata
 import pandas as pd
 from hubmap_cell_id_gen_py import get_spatial_cell_id
-from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset, precompute_dataset_percentages
+from cross_dataset_common import find_files, get_tissue_type, create_minimal_dataset, precompute_dataset_percentages, precompute_values_series
 
 from concurrent.futures import ThreadPoolExecutor
 
 ADJACENCY_MATRIX_PATH_PATTERN = 'reg1_stitched_expressions.ome.tiff_AdjacencyMatrix.mtx'
-
-def precompute_dataset_values_series(dataset_df, dataset_adata):
-    param_tuples_list = [(dataset_df, dataset_adata, var) for var in adata.index]
-    with ThreadPoolExecutor(max_workers=20) as e:
-        values_series_dicts = e.map(precompute_dataset_single_values_series, param_tuples_list)
-    values_series_dict = {}
-    for vsd in values_series_dicts:
-        values_series_dict.update(vsd)
-
-    return values_series_dict
-
-def precompute_dataset_single_values_series(cell_df_subset, dataset_adata, var):
-    values_series_dict = {}
-    values_list = [json.dumps({'var': dataset_adata[cell, var]} for cell in cell_df_subset.index)]
-    values_series = pd.Series(values_list, index=cell_df_subset.index)
-    values_series_dict[f"{dataset}+{var}"] = values_series
-    return values_series_dict
-
-def precompute_values_series(cell_df, adata):
-    dataset_dfs = [cell_df[cell_df["dataset"] == dataset] for dataset in cell_df["dataset"].unique()]
-    cell_ids_lists = [list(dataset_df["cell_id"].unique()) for dataset_df in dataset_dfs]
-    dataset_adatas = [adata[cell_id_list] for cell_id_list in cell_ids_lists]
-
-    param_tuples_list = [(dataset_dfs[i], dataset_adatas[i]) for i in range(len(dataset_dfs))]
-
-    with ThreadPoolExecutor(max_workers=10) as e:
-        values_series_dicts = e.map(precompute_dataset_values_series, param_tuples_list)
-    values_series_dict = {}
-    for vsd in values_series_dicts:
-        values_series_dict.update(vsd)
-
-    return values_series_dict
 
 def get_adjacency_adata(adjacency_file):
     region = get_reg_id(file)
@@ -268,6 +236,12 @@ if __name__ == '__main__':
     p = ArgumentParser()
     p.add_argument('nexus_token', type=str)
     p.add_argument('data_directories', type=Path, nargs='+')
+    p.add_argument("--enable-manhole", action="store_true")
     args = p.parse_args()
+
+    if args.enable_manhole:
+        import manhole
+
+        manhole.install(activate_on="USR1")
 
     main(args.nexus_token, args.data_directories)

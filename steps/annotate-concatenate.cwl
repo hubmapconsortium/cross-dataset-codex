@@ -11,6 +11,12 @@ baseCommand: /opt/parse_sprm_output.py
 
 inputs:
 
+  enable_manhole:
+    label: "Whether to enable remote debugging via 'manhole'"
+    type: boolean?
+    inputBinding:
+      position: 0
+
   nexus_token:
     type: string?
     doc: Valid nexus token for search-api
